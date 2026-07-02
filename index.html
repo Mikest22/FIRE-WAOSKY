@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mike Battle Base</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#07111f;font-family:Arial, sans-serif;color:white}
+  #ui{position:fixed;inset:0;pointer-events:none}
+  #hud{position:absolute;left:18px;top:14px;font-weight:700;text-shadow:0 2px 4px #000}
+  #help{position:absolute;right:18px;top:14px;background:rgba(0,0,0,.35);padding:12px;border-radius:12px;line-height:1.45}
+  #msg{position:absolute;left:50%;top:22px;transform:translateX(-50%);font-size:24px;font-weight:900;color:#ffe66d;text-shadow:0 2px 6px #000}
+  #cross{position:absolute;left:50%;top:50%;width:16px;height:16px;transform:translate(-50%,-50%);border:2px solid #fff;border-radius:50%;opacity:.75}
+  canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="ui">
+  <div id="hud">MIKE BATTLE BASE<br>Vida: <span id="hp">100</span> | Eliminados: <span id="kills">0</span></div>
+  <div id="msg"></div>
+  <div id="cross"></div>
+  <div id="help">WASD: mover<br>Mouse: mirar<br>Click: disparar<br>Espacio: saltar<br>Shift: correr<br>R: reiniciar</div>
+</div>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const hpEl=document.getElementById('hp'),killsEl=document.getElementById('kills'),msg=document.getElementById('msg');
+function resize(){canvas.width=innerWidth;canvas.height=innerHeight} addEventListener('resize',resize); resize();
+let keys={},mouse={x:0,y:0,down:false};
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=true;if(e.key.toLowerCase()==='r')reset()});
+addEventListener('keyup',e=>keys[e.key.toLowerCase()]=false);
+canvas.addEventListener('click',()=>canvas.requestPointerLock());
+addEventListener('mousemove',e=>{ if(document.pointerLockElement===canvas){player.a+=e.movementX*0.003;} else {mouse.x=e.clientX;mouse.y=e.clientY;} });
+addEventListener('mousedown',()=>shoot());
+let player,enemies,bullets,particles,kills;
+function reset(){
+ player={x:0,y:0,z:0,vz:0,a:0,hp:100}; kills=0; bullets=[]; particles=[];
+ enemies=[]; for(let i=0;i<12;i++) enemies.push(spawnEnemy()); msg.textContent='';
+}
+function spawnEnemy(){let ang=Math.random()*Math.PI*2,dist=500+Math.random()*1200;return{x:Math.cos(ang)*dist,y:Math.sin(ang)*dist,hp:3,hit:0}}
+function shoot(){
+ bullets.push({x:player.x,y:player.y,a:player.a,life:70});
+ particles.push({x:player.x+Math.cos(player.a)*40,y:player.y+Math.sin(player.a)*40,life:10,type:'flash'});
+}
+function update(){
+ let sp=keys['shift']?7:4,dx=0,dy=0;
+ if(keys['w']){dx+=Math.cos(player.a)*sp;dy+=Math.sin(player.a)*sp}
+ if(keys['s']){dx-=Math.cos(player.a)*sp;dy-=Math.sin(player.a)*sp}
+ if(keys['a']){dx+=Math.cos(player.a-Math.PI/2)*sp;dy+=Math.sin(player.a-Math.PI/2)*sp}
+ if(keys['d']){dx+=Math.cos(player.a+Math.PI/2)*sp;dy+=Math.sin(player.a+Math.PI/2)*sp}
+ player.x+=dx;player.y+=dy;
+ if(keys[' ']&&player.z===0)player.vz=12; player.z+=player.vz; player.vz-=0.7; if(player.z<0){player.z=0;player.vz=0}
+ for(const b of bullets){b.x+=Math.cos(b.a)*18;b.y+=Math.sin(b.a)*18;b.life--;}
+ bullets=bullets.filter(b=>b.life>0);
+ for(const e of enemies){
+  let ang=Math.atan2(player.y-e.y,player.x-e.x); e.x+=Math.cos(ang)*1.1; e.y+=Math.sin(ang)*1.1; if(e.hit>0)e.hit--;
+  let d=Math.hypot(player.x-e.x,player.y-e.y); if(d<35){player.hp-=0.15;}
+  for(const b of bullets){ if(Math.hypot(b.x-e.x,b.y-e.y)<32){e.hp--;e.hit=10;b.life=0;particles.push({x:e.x,y:e.y,life:18,type:'hit'});} }
+ }
+ let before=enemies.length; enemies=enemies.filter(e=>e.hp>0); kills+=before-enemies.length; while(enemies.length<12)enemies.push(spawnEnemy());
+ hpEl.textContent=Math.max(0,Math.floor(player.hp)); killsEl.textContent=kills; if(player.hp<=0){msg.textContent='ELIMINADO - Presiona R';}
+ particles.forEach(p=>p.life--);particles=particles.filter(p=>p.life>0);
+}
+function worldToScreen(x,y,z=0){
+ let dx=x-player.x,dy=y-player.y; let ca=Math.cos(-player.a),sa=Math.sin(-player.a); let rx=dx*ca-dy*sa, ry=dx*sa+dy*ca; let scale=500/(ry+700); return {x:canvas.width/2+rx*scale,y:canvas.height/2+140-(z||0)*scale-ry*.08,s:scale,front:ry>-650};
+}
+function draw(){
+ let g=ctx.createLinearGradient(0,0,0,canvas.height);g.addColorStop(0,'#0d4f9b');g.addColorStop(.55,'#58a9df');g.addColorStop(.56,'#2f8a3b');g.addColorStop(1,'#145526');ctx.fillStyle=g;ctx.fillRect(0,0,canvas.width,canvas.height);
+ ctx.save();ctx.translate(canvas.width/2,canvas.height/2+140);ctx.rotate(-player.a);ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=2;for(let i=-2000;i<=2000;i+=120){ctx.beginPath();ctx.moveTo(i-player.x,-2200-player.y);ctx.lineTo(i-player.x,2200-player.y);ctx.stroke();ctx.beginPath();ctx.moveTo(-2200-player.x,i-player.y);ctx.lineTo(2200-player.x,i-player.y);ctx.stroke();}ctx.restore();
+ let objs=[...enemies.map(o=>({...o,t:'e'})),...bullets.map(o=>({...o,t:'b'}))].sort((a,b)=>Math.hypot(b.x-player.x,b.y-player.y)-Math.hypot(a.x-player.x,a.y-player.y));
+ for(const o of objs){let p=worldToScreen(o.x,o.y,0); if(!p.front)continue; if(o.t==='e'){ctx.fillStyle=o.hit?'#fffb7a':'#bf2b2b';ctx.beginPath();ctx.ellipse(p.x,p.y-45*p.s,24*p.s,50*p.s,0,0,Math.PI*2);ctx.fill();ctx.fillStyle='#111';ctx.fillRect(p.x-18*p.s,p.y-86*p.s,36*p.s,8*p.s);ctx.fillStyle='#43ff6b';ctx.fillRect(p.x-18*p.s,p.y-86*p.s,12*o.hp*p.s,8*p.s);} else {ctx.fillStyle='#ffe66d';ctx.beginPath();ctx.arc(p.x,p.y,5*p.s,0,Math.PI*2);ctx.fill();}}
+ let cx=canvas.width/2,cy=canvas.height/2+120-player.z*2;
+ ctx.fillStyle='#0736a2';ctx.fillRect(cx-26,cy-90,52,82);ctx.fillStyle='#111';ctx.fillRect(cx-24,cy-8,18,65);ctx.fillRect(cx+6,cy-8,18,65);ctx.fillStyle='#fff';ctx.fillRect(cx-30,cy+52,24,10);ctx.fillRect(cx+6,cy+52,24,10);ctx.fillStyle='#c91522';ctx.beginPath();ctx.arc(cx,cy-120,34,Math.PI,0);ctx.fill();ctx.fillRect(cx-30,cy-120,60,12);ctx.fillStyle='#1d130c';ctx.beginPath();ctx.arc(cx,cy-92,28,0,Math.PI*2);ctx.fill();ctx.fillStyle='#c98b5d';ctx.beginPath();ctx.arc(cx,cy-96,24,0,Math.PI*2);ctx.fill();ctx.fillStyle='#1b1b1b';ctx.fillRect(cx-12,cy-88,24,10);
+ ctx.strokeStyle='#333';ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(cx+25,cy-60);ctx.lineTo(cx+75,cy-76);ctx.stroke();
+ for(const p of particles){ctx.fillStyle=p.type==='flash'?'#ffe66d':'#ff3b3b';let s=worldToScreen(p.x,p.y,0);ctx.globalAlpha=p.life/18;ctx.beginPath();ctx.arc(s.x,s.y,20*s.s,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;}
+}
+function loop(){if(player.hp>0)update();draw();requestAnimationFrame(loop)} reset(); loop();
+</script>
+</body>
+</html>
